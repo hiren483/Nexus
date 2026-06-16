@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 import type {
   Agent,
@@ -6,7 +7,23 @@ import type {
   Message,
 } from "@/types";
 
-import { AGENTS } from "@/assets/data/agents";
+import { AGENTS } from "@/data/agents";
+
+const seedConversationIds = new Set(["conv_1", "conv_2"]);
+
+const removeEmptySeedConversations = (
+  conversations: Conversation[],
+  messages: Message[]
+) =>
+  conversations.filter((conversation) => {
+    if (!seedConversationIds.has(conversation.id)) {
+      return true;
+    }
+
+    return messages.some(
+      (message) => message.conversationId === conversation.id
+    );
+  });
 
 interface ChatStore {
   conversations: Conversation[];
@@ -21,7 +38,9 @@ interface ChatStore {
 
   setActiveConversation: (id: string) => void;
 
-  createConversation: () => void;
+  createConversation: () => string;
+
+  deleteConversation: (id: string) => void;
 
   addMessage: (message: Message) => void;
 
@@ -31,80 +50,154 @@ interface ChatStore {
   ) => void;
 }
 
-export const useChatStore = create<ChatStore>(
-  (set) => ({
-    conversations: [
-      {
-        id: "conv_1",
-        title: "Vector DB Research",
-        lastMessage: "Qdrant selected",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: "conv_2",
-        title: "FastAPI Client",
-        lastMessage: "Python SDK generated",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ],
+export const useChatStore = create<ChatStore>()(
+  persist(
+    (set) => ({
+      conversations: [],
 
-    activeConversationId: "conv_1",
+      activeConversationId: null,
 
-    messages: [],
+      messages: [],
 
-    agents: AGENTS,
+      agents: AGENTS,
 
-    socketConnected: true,
+      socketConnected: true,
 
-    setActiveConversation: (id) =>
-      set({
-        activeConversationId: id,
-      }),
+      setActiveConversation: (id) =>
+        set({
+          activeConversationId: id,
+        }),
 
-    createConversation: () =>
-      set((state) => {
+      createConversation: () => {
+        const createdAt = new Date().toISOString();
+        const id = crypto.randomUUID();
         const newConversation: Conversation = {
-          id: crypto.randomUUID(),
+          id,
           title: "New Conversation",
           lastMessage: "",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt,
+          updatedAt: createdAt,
         };
 
-        return {
+        set((state) => ({
           conversations: [
             newConversation,
             ...state.conversations,
           ],
-          activeConversationId: newConversation.id,
-        };
+          activeConversationId: id,
+        }));
+
+        return id;
+      },
+
+      deleteConversation: (id) =>
+        set((state) => {
+          const remainingConversations =
+            state.conversations.filter(
+              (conversation) => conversation.id !== id
+            );
+          const activeConversationWasDeleted =
+            state.activeConversationId === id;
+
+          return {
+            conversations: remainingConversations,
+            messages: state.messages.filter(
+              (message) => message.conversationId !== id
+            ),
+            activeConversationId: activeConversationWasDeleted
+              ? remainingConversations[0]?.id ?? null
+              : state.activeConversationId,
+          };
+        }),
+
+      addMessage: (message) =>
+        set((state) => ({
+          messages: [...state.messages, message],
+
+          conversations: state.conversations.map((conversation) => {
+            if (conversation.id !== message.conversationId) {
+              return conversation;
+            }
+
+            const firstConversationMessage = !state.messages.some(
+              (item) => item.conversationId === message.conversationId
+            );
+            const mentionLabel = message.agent
+              ? `@${message.agent}: `
+              : "";
+
+            return {
+              ...conversation,
+              title: firstConversationMessage
+                ? message.content.slice(0, 42)
+                : conversation.title,
+              lastMessage: `${mentionLabel}${message.content}`.trim(),
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+
+      updateMessage: (id, updates) =>
+        set((state) => ({
+          messages: state.messages.map((message) =>
+            message.id === id
+              ? { ...message, ...updates }
+              : message
+          ),
+          conversations: state.conversations.map((conversation) => {
+            const updatedMessage = state.messages.find(
+              (message) => message.id === id
+            );
+
+            if (
+              !updatedMessage ||
+              conversation.id !== updatedMessage.conversationId
+            ) {
+              return conversation;
+            }
+
+            return {
+              ...conversation,
+              lastMessage: updates.content ?? conversation.lastMessage,
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        })),
+    }),
+    {
+      name: "multillmchat.chat",
+      partialize: (state) => ({
+        conversations: state.conversations,
+        activeConversationId: state.activeConversationId,
+        messages: state.messages,
+        socketConnected: state.socketConnected,
       }),
+      merge: (persistedState, currentState) => {
+        const persistedChatState =
+          persistedState as Partial<ChatStore>;
+        const messages = persistedChatState.messages ?? [];
+        const conversations = removeEmptySeedConversations(
+          persistedChatState.conversations ?? [],
+          messages
+        );
+        const activeConversationStillExists =
+          conversations.some(
+            (conversation) =>
+              conversation.id ===
+              persistedChatState.activeConversationId
+          );
 
-    addMessage: (message) =>
-      set((state) => ({
-        messages: [...state.messages, message],
-
-        conversations: state.conversations.map(
-          (conversation) =>
-            conversation.id === message.conversationId
-              ? {
-                  ...conversation,
-                  lastMessage: message.content,
-                  updatedAt: new Date().toISOString(),
-                }
-              : conversation
-        ),
-      })),
-
-    updateMessage: (id, updates) =>
-      set((state) => ({
-        messages: state.messages.map((message) =>
-          message.id === id
-            ? { ...message, ...updates }
-            : message
-        ),
-      })),
-  })
+        return {
+          ...currentState,
+          ...persistedChatState,
+          conversations,
+          messages,
+          activeConversationId: activeConversationStillExists
+            ? persistedChatState.activeConversationId ?? null
+            : conversations[0]?.id ?? null,
+          agents: AGENTS,
+        };
+      },
+    }
+  )
 );

@@ -1,6 +1,8 @@
 "use client";
 import type { Message } from "@/types";
-import { AGENT_MAP } from "@/assets/data/agents";
+import { AGENT_MAP } from "@/data/agents";
+
+import TypingIndicator from "./TypingIndicator";
 
 interface Props {
   message: Message;
@@ -22,7 +24,7 @@ export default function MessageBubble({
       }`}
     >
       <div
-        className={`max-w-3xl rounded-2xl px-4 py-3 ${
+        className={`max-w-3xl rounded-lg px-4 py-3 ${
           isUser
             ? "bg-zinc-800 text-white"
             : "bg-zinc-900 text-zinc-100"
@@ -33,15 +35,27 @@ export default function MessageBubble({
             className="mb-2 flex items-center gap-2 text-sm font-medium"
             style={{ color: agent.color }}
           >
-            <span>{agent.icon}</span>
+            <span
+              className="flex h-6 w-6 items-center justify-center rounded text-xs font-semibold text-white"
+              style={{ backgroundColor: agent.color }}
+            >
+              {agent.icon}
+            </span>
 
             <span>@{agent.id}</span>
           </div>
         )}
 
         <div className="whitespace-pre-wrap">
-          {message.content}
+          {message.content || " "}
         </div>
+
+        {!isUser && agent && message.agentStatus && (
+          <TypingIndicator
+            agent={agent}
+            status={message.agentStatus}
+          />
+        )}
 
         <div className="mt-2 text-xs text-zinc-500">
           {new Date(message.timestamp).toLocaleTimeString(

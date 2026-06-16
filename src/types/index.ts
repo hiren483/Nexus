@@ -70,6 +70,8 @@ export interface Message {
 
   status: MessageStatus;
 
+  agentStatus?: AgentStatus;
+
   metadata?: {
     retrievedChunks?: RetrievedChunk[];
   };
@@ -89,6 +91,22 @@ export interface StreamStartEvent {
   messageId: string;
 }
 
+export interface StreamStatusEvent {
+  type: "status";
+
+  messageId: string;
+
+  status: AgentStatus;
+}
+
+export interface StreamRetrievedEvent {
+  type: "retrieved";
+
+  messageId: string;
+
+  chunks: RetrievedChunk[];
+}
+
 export interface StreamTokenEvent {
   type: "token";
 
@@ -105,5 +123,17 @@ export interface StreamDoneEvent {
 
 export type StreamEvent =
   | StreamStartEvent
+  | StreamStatusEvent
+  | StreamRetrievedEvent
   | StreamTokenEvent
   | StreamDoneEvent;
+
+export interface ParsedMessage {
+  agent: AgentType;
+
+  content: string;
+}
+
+export interface ParseMessageError {
+  message: string;
+}

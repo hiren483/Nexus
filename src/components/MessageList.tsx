@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useChatStore } from "@/store/chatStore";
 
@@ -21,6 +21,15 @@ export default function MessageList() {
       ),
     [messages, activeConversationId]
   );
+
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      block: "end",
+      behavior: "smooth",
+    });
+  }, [conversationMessages]);
 
   if (!conversationMessages.length) {
     return (
@@ -50,6 +59,7 @@ export default function MessageList() {
           message={message}
         />
       ))}
+      <div ref={bottomRef} />
     </div>
   );
 }
