@@ -1,4 +1,4 @@
-# 🧠 NEXUS
+# NEXUS
 ### *what if AI agents could actually talk to each other through you*
 
 ---
