@@ -169,7 +169,7 @@ One growing array. Every agent reads from it. Nobody owns it.
 ## getting started
 
 ```bash
-git clone https://github.com/you/nexus
+git clone https://github.com/hiren483/Nexus
 cd nexus
 
 # spin up qdrant
@@ -239,8 +239,6 @@ memory:
 Most people build "multi-agent" demos where agents hand off to each other in a fixed pipeline. NEXUS is different: **the user drives the conversation**, agents are called on demand, and the shared memory means any agent called at any point has access to everything relevant that came before without you managing that state manually.
 
 The interesting engineering is in the retrieval layer. Getting `α` right. Getting chunk boundaries right. Getting the budget manager to summarize gracefully instead of cutting bluntly. Those are real problems.
-
-The demo looks simple. The underneath isn't.
 
 ---
 
