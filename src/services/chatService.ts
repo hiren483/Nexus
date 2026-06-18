@@ -3,8 +3,6 @@ import { v4 as uuid } from "uuid";
 import type {
   SendMessagePayload,
   StreamEvent,
-  AgentType,
-  RetrievedChunk,
 } from "@/types";
 
 export interface ChatService {
@@ -14,51 +12,26 @@ export interface ChatService {
   ): Promise<void>;
 }
 
-const RESPONSES: Record<AgentType, (content: string) => string> = {
-  researcher: () =>
-    "Qdrant is the strongest fit for this thread because its payload filtering is mature, fast, and straightforward to model. Pinecone and Weaviate are credible, but Qdrant gives the cleanest path for explicit metadata filters and local development.",
+interface ChatApiResponse {
+  content: string;
+}
 
-  coder: (content) =>
-    `I will build against the shared decision to use Qdrant. For "${content}", start with a typed service boundary, keep the collection schema explicit, and isolate the client so the UI never depends on storage details.`,
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api";
 
-  critic: () =>
-    "The main risks are assuming memory is always relevant, hiding retrieval failures, and letting agent responses mutate shared context without clear status. Add source visibility in developer mode and keep the service contract stable.",
-
-  planner: () =>
-    "Sequence this as contracts, mock service, visible chat flow, retrieval trace, then backend replacement. That order keeps the interface stable while proving the user-owned orchestration model.",
-
-  summarizer: () =>
-    "So far, the shared thread selected Qdrant, routed implementation work to the coder, and identified reliability risks for hidden context sharing.",
+const streamContent = (
+  messageId: string,
+  content: string,
+  onEvent: (event: StreamEvent) => void
+) => {
+  onEvent({
+    type: "token",
+    messageId,
+    content,
+  });
 };
 
-const MOCK_RETRIEVED_CHUNKS: RetrievedChunk[] = [
-  {
-    id: "chunk_1",
-    score: 0.92,
-    content: "Qdrant selected for payload filtering",
-    sourceAgent: "researcher",
-    timestamp: new Date().toISOString(),
-  },
-  {
-    id: "chunk_2",
-    score: 0.84,
-    content: "Sub-10ms latency target for retrieval",
-    sourceAgent: "planner",
-    timestamp: new Date().toISOString(),
-  },
-  {
-    id: "chunk_3",
-    score: 0.71,
-    content: "Metadata filters should stay explicit",
-    sourceAgent: "critic",
-    timestamp: new Date().toISOString(),
-  },
-];
-
-const sleep = (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-class MockChatService implements ChatService {
+class ApiChatService implements ChatService {
   async sendMessage(
     payload: SendMessagePayload,
     onEvent: (event: StreamEvent) => void
@@ -76,15 +49,11 @@ class MockChatService implements ChatService {
       status: "retrieving",
     });
 
-    await sleep(650);
-
     onEvent({
       type: "retrieved",
       messageId,
-      chunks: MOCK_RETRIEVED_CHUNKS,
+      chunks: [],
     });
-
-    await sleep(350);
 
     onEvent({
       type: "status",
@@ -92,19 +61,24 @@ class MockChatService implements ChatService {
       status: "generating",
     });
 
-    const response = RESPONSES[payload.agent](payload.content);
+    const response = await fetch(`${API_BASE_URL}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        conversation_id: payload.conversationId,
+        agent: payload.agent,
+        content: payload.content,
+      }),
+    });
 
-    const words = response.split(" ");
-
-    for (const word of words) {
-      await sleep(35);
-
-      onEvent({
-        type: "token",
-        messageId,
-        content: `${word} `,
-      });
+    if (!response.ok) {
+      throw new Error(`Chat API failed with ${response.status}`);
     }
+
+    const data = (await response.json()) as ChatApiResponse;
+    streamContent(messageId, data.content, onEvent);
 
     onEvent({
       type: "done",
@@ -113,4 +87,4 @@ class MockChatService implements ChatService {
   }
 }
 
-export const chatService = new MockChatService();
+export const chatService = new ApiChatService();
