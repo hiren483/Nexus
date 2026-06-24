@@ -2,7 +2,7 @@ import os
 
 MODEL = os.getenv(
     "DEFAULT_MODEL",
-    "nex-agi/nex-n2-pro:free"
+    "nvidia/nemotron-3-super-120b-a12b:free"
 )
 
 AGENTS = {
